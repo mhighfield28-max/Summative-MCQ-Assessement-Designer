@@ -44,7 +44,7 @@ export default function App() {
         <div className="header-logo">S</div>
         <div>
           <h1>Summative Assessment Design Assistant</h1>
-          <p className="subtitle">Bloom's Taxonomy · MCQ Generator · Respondus Export</p>
+          <p className="subtitle">Bloom's Taxonomy · MCQ Generator · Blackboard Export</p>
         </div>
       </header>
 

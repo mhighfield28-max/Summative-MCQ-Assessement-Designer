@@ -76,7 +76,7 @@ Generate all ${config.questionCount} questions. correctIndex is 0-based (0 = fir
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 8000,
       messages: [{ role: 'user', content: prompt }],
     }),
@@ -145,7 +145,7 @@ Return ONLY a JSON object (no array, no markdown) matching this exact schema:
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       messages: [{ role: 'user', content: prompt }],
     }),

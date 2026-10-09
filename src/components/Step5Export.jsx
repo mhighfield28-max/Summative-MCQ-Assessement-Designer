@@ -1,240 +1,157 @@
 import React, { useState } from 'react';
-import { BLOOMS_COLORS } from '../utils/bloomsDistribution';
+import { Notice } from './ui';
+import { setChecks, failedChecks } from '../utils/checks';
+import { buildZip, downloadBlob, toGift, toBlackboard } from '../utils/exporters';
+import { EXPORT_FORMATS, specFileText, minuteRange } from '../utils/spec';
 
-/**
- * Generates Blackboard tab-separated upload format.
- * Format per row:
- * MC [TAB] Question stem [TAB] Option A [TAB] correct/incorrect [TAB] Option B [TAB] incorrect ...
- */
-function generateBlackboardFormat(questions) {
-  const lines = questions.map((q) => {
-    const parts = ['MC', q.stem];
-    q.options.forEach((opt, i) => {
-      parts.push(opt);
-      parts.push(i === q.correctIndex ? 'correct' : 'incorrect');
-    });
-    return parts.join('\t');
-  });
-  return lines.join('\n');
-}
+export default function Step5Export({ questions, config, houseRules, contentSource, onBack, onRestart }) {
+  const approved = questions.filter((q) => q.status === 'approved');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
+  const [error, setError] = useState(null);
 
-function downloadBlackboardFile(questions, config) {
-  const content = generateBlackboardFormat(questions);
-  const safeName = config.moduleName
-    .replace(/[^a-z0-9]/gi, '_')
-    .replace(/_+/g, '_')
-    .toLowerCase();
-  const filename = `${safeName}_blackboard_upload.txt`;
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
+  const set = setChecks(approved, config);
+  const withFails = approved.filter((q) => failedChecks(q).length > 0).length;
+  const higher = approved.filter((q) => !['Remember', 'Understand'].includes(q.level)).length;
+  const formats = EXPORT_FORMATS.filter((f) => config.formats.includes(f.id));
 
-function downloadReviewSheet(questions, config) {
-  const letters = ['a', 'b', 'c', 'd', 'e'];
-  let output = '';
-  output += `QUESTION REVIEW SHEET\n`;
-  output += `${'='.repeat(60)}\n`;
-  output += `Module: ${config.moduleName}\n`;
-  output += `Academic Level: ${config.academicLevel}\n`;
-  output += `Assessment Weight: ${config.assessmentWeight}%\n`;
-  output += `Questions: ${questions.length} | Time: ${config.minutes} min\n`;
-  output += `${'='.repeat(60)}\n\n`;
-  questions.forEach((q, index) => {
-    output += `Q${index + 1}. [${q.bloomsLevel.toUpperCase()}] ${q.stem}\n`;
-    q.options.forEach((option, i) => {
-      const marker = i === q.correctIndex ? '✓' : ' ';
-      output += `   ${marker} ${letters[i]}. ${option}\n`;
-    });
-    output += `   LO: ${q.learningObjectiveRef}\n`;
-    output += `   Explanation: ${q.explanation}\n\n`;
-  });
-  const safeName = config.moduleName
-    .replace(/[^a-z0-9]/gi, '_')
-    .replace(/_+/g, '_')
-    .toLowerCase();
-  const blob = new Blob([output], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${safeName}_review_sheet.txt`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
+  const preview = config.formats.includes('gift')
+    ? toGift(approved.slice(0, 2), config)
+    : toBlackboard(approved.slice(0, 3));
 
-export default function Step5Export({ questions, config, onBack, onRestart }) {
-  const [downloaded, setDownloaded] = useState(false);
-
-  const lowerOrder = questions.filter((q) =>
-    ['Remember', 'Understand'].includes(q.bloomsLevel)
-  ).length;
-  const higherOrder = questions.length - lowerOrder;
-
-  const counts = {};
-  questions.forEach((q) => {
-    counts[q.bloomsLevel] = (counts[q.bloomsLevel] || 0) + 1;
-  });
-
-  const previewLines = generateBlackboardFormat(questions)
-    .split('\n')
-    .slice(0, 5)
-    .map((line) => {
-      const parts = line.split('\t');
-      return parts[0] + '\t' + parts[1] + '\t[options...]';
-    })
-    .join('\n');
-
-  const handleDownload = () => {
-    downloadBlackboardFile(questions, config);
-    setDownloaded(true);
+  const download = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { blob, filename } = await buildZip({
+        questions: approved,
+        config,
+        setResult: set,
+        specificationFile: specFileText(houseRules, config, contentSource),
+      });
+      downloadBlob(blob, filename);
+      setDone(filename);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
   };
+
+  if (approved.length === 0) {
+    return (
+      <div>
+        <div className="card">
+          <h2 className="card-title">Export</h2>
+          <Notice kind="warn">Nothing is approved yet. Only approved questions can be exported.</Notice>
+        </div>
+        <div className="btn-row">
+          <button type="button" className="btn btn-secondary" onClick={onBack}>← Back to review</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
       <div className="card">
-        <h2 className="card-title">Export to Blackboard</h2>
-        <p className="card-subtitle">
-          Download your questions as a Blackboard-ready upload file. Import it directly
-          into a Blackboard Test or Question Pool in your course.
+        <h2 className="card-title">Export</h2>
+        <p className="card-sub">
+          Approved questions only. Everything downloads together as one zip named after the module and today's date.
         </p>
 
-        {/* Stats */}
-        <div className="export-grid">
-          <div className="export-stat">
-            <div className="export-stat-val">{questions.length}</div>
-            <div className="export-stat-label">Questions</div>
+        <div className="stats">
+          <div className="stat">
+            <div className="stat-val">{approved.length}</div>
+            <div className="stat-label">Approved</div>
           </div>
-          <div className="export-stat">
-            <div className="export-stat-val">{config.minutes} min</div>
-            <div className="export-stat-label">Duration</div>
+          <div className="stat">
+            <div className="stat-val">{minuteRange(set.time.low, set.time.high)}</div>
+            <div className="stat-label">Minutes of {config.minutes}</div>
           </div>
-          <div className="export-stat">
-            <div className="export-stat-val">{config.assessmentWeight}%</div>
-            <div className="export-stat-label">Module Grade Weight</div>
+          <div className="stat">
+            <div className="stat-val">{config.weight}%</div>
+            <div className="stat-label">Module grade</div>
           </div>
-          <div className="export-stat">
-            <div className="export-stat-val">
-              {Math.round((higherOrder / questions.length) * 100)}%
-            </div>
-            <div className="export-stat-label">Higher-Order Questions</div>
+          <div className="stat">
+            <div className="stat-val">{Math.round((higher / approved.length) * 100)}%</div>
+            <div className="stat-label">Higher order</div>
           </div>
         </div>
 
-        {/* Bloom's breakdown */}
-        <div style={{ marginBottom: 24 }}>
-          <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
-            Bloom's Distribution
-          </p>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {Object.entries(counts).map(([level, count]) => (
-              <span
-                key={level}
-                className="blooms-badge"
-                style={{
-                  background: BLOOMS_COLORS[level] + '18',
-                  color: BLOOMS_COLORS[level],
-                  border: `1px solid ${BLOOMS_COLORS[level]}44`,
-                  fontSize: '0.8rem',
-                  padding: '5px 12px',
-                }}
-              >
-                {count}× {level}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* QAA warning */}
-        {config.assessmentWeight > 30 && (
-          <div className="notice warning" style={{ marginBottom: 20 }}>
-            <span className="notice-icon">⚠️</span>
-            <span>
-              <strong>Reminder:</strong> This assessment is weighted at {config.assessmentWeight}%
-              of the overall module grade, which exceeds the recommended 30% ceiling for MCQ
-              assessments (Franke, 2018). Ensure complementary assessment methods are in place.
-            </span>
-          </div>
+        {!set.distribution.pass && (
+          <Notice kind="warn">
+            The approved set no longer matches your distribution: {set.distribution.reason}. You can still export, or go back
+            and approve or regenerate questions.
+          </Notice>
+        )}
+        {!set.time.pass && <Notice kind="warn">{set.time.reason}</Notice>}
+        {withFails > 0 && (
+          <Notice kind="warn">
+            {withFails} approved question{withFails > 1 ? 's have' : ' has'} a failed check. That's your call, but it will show
+            on the review sheet.
+          </Notice>
         )}
 
-        {/* Format explanation */}
-        <div className="notice info" style={{ marginBottom: 20 }}>
-          <span className="notice-icon">ℹ️</span>
-          <span>
-            The download is a <strong>tab-separated .txt file</strong> in Blackboard's native
-            upload format. Each row contains the question type, stem, and answer options with
-            correct/incorrect labels — ready to upload directly into Blackboard.
-          </span>
-        </div>
+        <h3 className="section-title">In the zip</h3>
+        <ul style={{ paddingLeft: 20, marginBottom: 20, lineHeight: 1.9 }}>
+          {formats.map((f) => (
+            <li key={f.id}>
+              <strong>{f.label}</strong> import file (.txt)
+            </li>
+          ))}
+          <li>
+            <strong>Review sheet</strong> (.html, print to PDF): key, level, knowledge type, the misconception behind each
+            distractor and the source passage, for moderation and external examiners
+          </li>
+          <li>
+            <strong>Specification used</strong> (.md), so the set can be reproduced. It re-imports on the Set up screen.
+          </li>
+        </ul>
 
-        {/* Preview */}
-        <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-          File Preview (first 5 questions)
-        </p>
-        <div className="export-preview">{previewLines}</div>
+        <p className="label">Preview</p>
+        <pre className="file-preview" tabIndex={0} aria-label="Preview of the import file">{preview}</pre>
 
-        {/* Download buttons */}
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 28 }}>
-          <button className="btn btn-gold" onClick={handleDownload}>
-            ⬇️ Download Blackboard Upload File
-          </button>
-          <button className="btn btn-secondary" onClick={() => downloadReviewSheet(questions, config)}>
-            📋 Download Review Sheet
+        <div className="export-payoff">
+          <div>
+            <strong>{approved.length} questions ready to import.</strong>
+            <p>{formats.map((f) => f.label).join(' and ')}, plus review sheet and specification.</p>
+          </div>
+          <button type="button" className="btn btn-primary" onClick={download} disabled={busy}>
+            {busy ? 'Building zip…' : 'Download zip'}
           </button>
         </div>
 
-        {downloaded && (
-          <div className="notice info" style={{ marginBottom: 20 }}>
-            <span className="notice-icon">✅</span>
-            <span>File downloaded. Follow the steps below to upload into Blackboard.</span>
-          </div>
-        )}
+        {done && <Notice kind="ok">Downloaded {done}.</Notice>}
+        {error && <Notice kind="error">Could not build the zip: {error}</Notice>}
 
-        <div className="section-divider" />
-
-        {/* Import instructions */}
-        <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', color: 'var(--navy)', marginBottom: 16 }}>
-          How to Upload into Blackboard
-        </h3>
-
-        <ol style={{ paddingLeft: 20, fontSize: '0.875rem', lineHeight: 2.2, color: 'var(--text)' }}>
-          <li>In your Blackboard course, go to <strong>Course Tools → Tests, Surveys and Pools</strong></li>
-          <li>Select <strong>Pools</strong> → click <strong>Build Pool</strong> and give it a name</li>
-          <li>Inside the pool, click <strong>Upload Questions</strong></li>
-          <li>Select your downloaded <code>.txt</code> file and click <strong>Submit</strong></li>
-          <li>Blackboard will import all questions — review them in the pool editor</li>
-          <li>Go back to <strong>Tests</strong> → <strong>Build Test</strong></li>
-          <li>Click <strong>Reuse Question → Find Questions</strong> and select from your pool</li>
-          <li>Set time limit, display options and marks per question in <strong>Test Options</strong></li>
-          <li>Deploy the test to your course content area and set availability dates</li>
+        <h3 className="section-title">Importing</h3>
+        <ol className="howto">
+          {config.formats.includes('gift') && (
+            <li>
+              <strong>Moodle:</strong> in the course, open the question bank, choose <strong>Import</strong>, pick{' '}
+              <strong>GIFT format</strong> and upload the GIFT file.
+            </li>
+          )}
+          {config.formats.includes('blackboard') && (
+            <li>
+              <strong>Blackboard:</strong> in a test or question bank, choose <strong>Upload questions</strong> and select the
+              Blackboard .txt file.
+            </li>
+          )}
+          <li>Check a few questions in the LMS preview before you release the test.</li>
         </ol>
-
-        <div className="notice info" style={{ marginTop: 20 }}>
-          <span className="notice-icon">📚</span>
-          <span style={{ fontSize: '0.82rem' }}>
-            <strong>References:</strong> Carneson et al. (1996); Anderson et al. (2001) — Bloom's
-            Revised Taxonomy; Franke (2018) — Final Exam Weighting; QAA UK Quality Code for
-            Higher Education (Assessment). Questions generated in line with UCD MCQ Design Guide (CC-BY).
-          </span>
-        </div>
       </div>
 
       <div className="btn-row">
-        <button className="btn btn-secondary" onClick={onBack}>← Back to Review</button>
-        <div className="btn-row-right">
+        <button type="button" className="btn btn-secondary" onClick={onBack}>← Back to review</button>
+        <div className="right">
           <button
-            className="btn btn-secondary"
-            onClick={onRestart}
-            style={{ borderColor: 'var(--navy)', color: 'var(--navy)' }}
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => window.confirm('Start a new set? This clears the current questions.') && onRestart()}
           >
-            🔄 Start New Assessment
+            Start a new set
           </button>
         </div>
       </div>

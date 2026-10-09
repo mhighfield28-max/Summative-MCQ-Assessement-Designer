@@ -1,0 +1,54 @@
+/* =====================================================================
+   THEME — every colour and font in the app lives here.
+   Restyle the app as your own by changing these values only.
+   Default: mikehighfield.ai brand.
+   ===================================================================== */
+:root {
+  /* Brand */
+  --field-ink:     #243428; /* header, dark panels, headlines */
+  --deep-field:    #2D6A5F; /* secondary green, tags, links */
+  --spark:         #E09830; /* accent: primary buttons only, never text on light */
+  --cream:         #F5F2EC; /* page background */
+  --near-black:    #1A1C19; /* body text */
+
+  /* Supporting neutrals */
+  --text-secondary: #6B6F68;
+  --card:           #FFFFFF;
+  --card-border:    #E3DFD4;
+  --panel:          #EDE9DF; /* subtle fills on cream */
+  --ink-on-dark:    #F5F2EC;
+  --ink-on-dark-2:  #C9D3C9;
+  --deep-field-tint: #EEF4F2; /* light fill for selected / info */
+  --spark-hover:    #CB8828;
+  --field-ink-hover: #33473A;
+  --warn-on-dark:   #F4C07A; /* warnings on Field Ink panels */
+
+  /* States (always paired with an icon and a word, never colour alone) */
+  --pass:      #2E6B3F;
+  --pass-bg:   #E7F0E8;
+  --fail:      #A3261B;
+  --fail-bg:   #F8E6E3;
+  --warn:      #7A4D00;
+  --warn-bg:   #FBEFD9;
+  --warn-line: #E09830;
+
+  /* Bloom's levels: brand-adjacent scale, cool greens (lower order) → ochre/Spark → brick (higher order) */
+  --lvl-remember:   #7FA392;
+  --lvl-understand: #3F7A66;
+  --lvl-apply:      #B98A2E;
+  --lvl-analyse:    #E09830;
+  --lvl-evaluate:   #A4462E;
+
+  /* Type */
+  --font-display: 'Syne', 'Helvetica Neue', Arial, sans-serif;
+  --font-body:    'Inter', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  --display-weight: 500;
+  --body-size: 16px;
+
+  /* Shape */
+  --radius:      10px;
+  --radius-lg:   14px;
+  --radius-pill: 999px;
+  --focus-ring:  0 0 0 3px #FFFFFF, 0 0 0 5px #2D6A5F;
+  --max-width:   960px;
+}

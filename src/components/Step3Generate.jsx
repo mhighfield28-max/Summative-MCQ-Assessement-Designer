@@ -1,119 +1,159 @@
-import React, { useEffect, useState } from 'react';
-import { generateMCQs } from '../utils/anthropicClient';
-import { BLOOMS_DISTRIBUTION, BLOOMS_COLORS } from '../utils/bloomsDistribution';
+import React, { useState } from 'react';
+import { Notice, LevelTag, levelColour } from './ui';
+import { generateQuestionSet } from '../utils/anthropicClient';
+import { LEVELS, SECONDS_PER_QUESTION, WEIGHT_CEILING, estimateSeconds, toMinutes, minuteRange } from '../utils/spec';
 
-const STAGES = [
-  'Analysing learning objectives…',
-  'Mapping content to Bloom\'s Taxonomy…',
-  'Drafting higher-order questions…',
-  'Refining distractors…',
-  'Applying QAA best practices…',
-  'Finalising question set…',
-];
+export default function Step3Generate({ config, specification, contentText, existingCount, onBack, onDone }) {
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState([]);
+  const [error, setError] = useState(null);
 
-export default function Step3Generate({ config, content, onDone, onBack }) {
-  const [stage,    setStage]   = useState(0);
-  const [error,    setError]   = useState(null);
-  const [retrying, setRetrying] = useState(false);
-
-  const distribution = BLOOMS_DISTRIBUTION[config.questionCount];
+  const total = Number(config.questionCount);
+  const { low, high } = estimateSeconds(config.distribution);
+  const fits = toMinutes(high) <= Number(config.minutes);
+  const heavy = Number(config.weight) > WEIGHT_CEILING;
 
   const run = async () => {
     setError(null);
-    setRetrying(false);
-    setStage(0);
-
-    // Cycle through stage messages while waiting
-    const interval = setInterval(() => {
-      setStage((s) => (s < STAGES.length - 1 ? s + 1 : s));
-    }, 3500);
-
+    setProgress([]);
+    setRunning(true);
     try {
-      const questions = await generateMCQs({ learningObjectives: content.learningObjectives, syllabusContent: content.syllabusContent, config });
-      clearInterval(interval);
-      onDone(questions);
-    } catch (err) {
-      clearInterval(interval);
-      setError(err.message || 'An unexpected error occurred.');
+      const qs = await generateQuestionSet({
+        specification,
+        content: contentText,
+        config,
+        onProgress: (done) => setProgress(done),
+      });
+      onDone(qs);
+    } catch (e) {
+      setError(e.message || 'Something went wrong.');
+      setRunning(false);
     }
   };
 
-  useEffect(() => { run(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
-
-  const handleRetry = () => { setRetrying(true); run(); };
+  const pct = Math.round((progress.length / total) * 100);
 
   return (
-    <div className="card">
-      {!error ? (
-        <div className="generate-screen">
-          <div className="generate-spinner" />
-          <h2 className="generate-title">Generating your assessment…</h2>
-          <p className="generate-sub">{STAGES[stage]}</p>
+    <div>
+      <div className="card">
+        <h2 className="card-title">Generate</h2>
+        <p className="card-sub">
+          This is what will be asked for. The full specification, Part A and Part B, goes to the AI as its instructions; your
+          teaching content goes with it as source material.
+        </p>
 
-          <div className="generate-progress">
-            <div className="generate-progress-bar" />
-          </div>
+        <table className="summary-table">
+          <thead>
+            <tr>
+              <th>Level</th>
+              <th className="num">Questions</th>
+              <th className="num">Seconds each</th>
+              <th className="num">Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {LEVELS.map((l) => {
+              const n = Number(config.distribution[l]);
+              const [a, b] = SECONDS_PER_QUESTION[l];
+              return (
+                <tr key={l}>
+                  <td>
+                    <LevelTag level={l} />
+                  </td>
+                  <td className="num">{n}</td>
+                  <td className="num">
+                    {a}–{b}
+                  </td>
+                  <td className="num">
+                    {toMinutes(n * a)}–{toMinutes(n * b)} min
+                  </td>
+                </tr>
+              );
+            })}
+            <tr>
+              <td>
+                <strong>Total</strong>
+              </td>
+              <td className="num">
+                <strong>{total}</strong>
+              </td>
+              <td />
+              <td className="num">
+                <strong>
+                  {minuteRange(low, high)} min
+                </strong>{' '}
+                of {config.minutes}
+              </td>
+            </tr>
+          </tbody>
+        </table>
 
-          <div style={{ marginTop: 40, textAlign: 'left' }}>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 14, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Target distribution — {config.questionCount} questions
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {Object.entries(distribution)
-                .filter(([, count]) => count > 0)
-                .map(([level, count]) => (
-                  <div key={level} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{
-                      width: 80,
-                      fontSize: '0.78rem',
-                      color: 'var(--text-muted)',
-                      fontWeight: 500,
-                    }}>{level}</div>
-                    <div style={{
-                      flex: 1,
-                      height: 8,
-                      background: 'var(--cream-dark)',
-                      borderRadius: 4,
-                      overflow: 'hidden',
-                    }}>
-                      <div style={{
-                        width: `${(count / config.questionCount) * 100}%`,
-                        height: '100%',
-                        background: BLOOMS_COLORS[level],
-                        borderRadius: 4,
-                      }} />
-                    </div>
-                    <div style={{ width: 20, fontSize: '0.78rem', color: 'var(--text-muted)', textAlign: 'right' }}>
-                      {count}
-                    </div>
-                  </div>
-                ))}
+        {!fits && (
+          <Notice kind="warn">
+            The time doesn't fit: up to about {toMinutes(high)} minutes of questions against {config.minutes} available, before
+            any reading time. You can still generate, but consider going back to Set up.
+          </Notice>
+        )}
+        {heavy && (
+          <Notice kind="warn">
+            This paper carries {config.weight}% of the module grade, above the {WEIGHT_CEILING}% the house rules flag.
+          </Notice>
+        )}
+        {existingCount > 0 && !running && (
+          <Notice kind="info">You already have {existingCount} questions. Generating again replaces them all.</Notice>
+        )}
+
+        {running && (
+          <div aria-live="polite">
+            <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={progress.length}>
+              <div className="progress-fill" style={{ width: `${pct}%` }} />
             </div>
+            <p className="progress-label">
+              {progress.length < total
+                ? `Writing question ${progress.length + 1} of ${total}…`
+                : 'Running the checks…'}
+            </p>
+            <ul className="progress-list">
+              {progress.map((q) => (
+                <li key={q.id}>
+                  <span className="pid">{q.id.toUpperCase()}</span>
+                  <span className="dot" style={{ width: 9, height: 9, borderRadius: '50%', background: levelColour(q.level), flexShrink: 0 }} aria-hidden="true" />
+                  <span className="pstem">{q.stem}</span>
+                </li>
+              ))}
+            </ul>
           </div>
-        </div>
-      ) : (
-        <div style={{ padding: '20px 0' }}>
-          <h2 className="card-title" style={{ marginBottom: 8 }}>Generation failed</h2>
-          <p className="card-subtitle">Something went wrong. Check the error below and try again.</p>
+        )}
 
-          <div className="error-box">
-            <strong>Error:</strong> {error}
-            {error.includes('API key') && (
-              <p style={{ marginTop: 8 }}>
-                Set <code>REACT_APP_ANTHROPIC_API_KEY</code> in your <code>.env</code> file (local) or
-                in <strong>Amplify → App Settings → Environment Variables</strong>.
-              </p>
+        {error && (
+          <Notice kind="error">
+            <strong>Generation stopped.</strong> {error}
+            {/API key/i.test(error) && (
+              <div style={{ marginTop: 6 }}>
+                Set <code>REACT_APP_ANTHROPIC_API_KEY</code> in Amplify → Environment variables, then redeploy.
+              </div>
             )}
-          </div>
+            {progress.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <button type="button" className="btn btn-secondary btn-small" onClick={() => onDone(progress)}>
+                  Review the {progress.length} written so far
+                </button>
+              </div>
+            )}
+          </Notice>
+        )}
+      </div>
 
-          <div className="btn-row">
-            <button className="btn btn-secondary" onClick={onBack}>← Back to Content</button>
-            <button className="btn btn-primary" onClick={handleRetry} disabled={retrying}>
-              {retrying ? 'Retrying…' : '↺ Try Again'}
-            </button>
-          </div>
+      <div className="btn-row">
+        <button type="button" className="btn btn-secondary" onClick={onBack} disabled={running}>
+          ← Back
+        </button>
+        <div className="right">
+          <button type="button" className="btn btn-primary" onClick={run} disabled={running}>
+            {running ? 'Generating…' : error ? 'Try again' : `Generate ${total} questions`}
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }

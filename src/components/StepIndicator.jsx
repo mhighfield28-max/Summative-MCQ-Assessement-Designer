@@ -1,34 +1,38 @@
 import React from 'react';
 
-const STEPS = [
-  { num: 1, label: 'Configure' },
-  { num: 2, label: 'Content' },
-  { num: 3, label: 'Generate' },
-  { num: 4, label: 'Review' },
-  { num: 5, label: 'Export' },
-];
+export const STEPS = ['Set up', 'Content', 'Generate', 'Review', 'Export'];
 
-export default function StepIndicator({ currentStep }) {
+/** Numbered steps across the top. Earlier steps can be revisited; going forward uses the button on each screen. */
+export default function StepIndicator({ currentStep, onSelect }) {
   return (
-    <div className="step-indicator">
-      {STEPS.map((step, i) => {
-        const isDone   = currentStep > step.num;
-        const isActive = currentStep === step.num;
-
-        return (
-          <React.Fragment key={step.num}>
-            <div className={`step-item${isActive ? ' active' : ''}${isDone ? ' done' : ''}`}>
-              <div className={`step-circle${isActive ? ' active' : ''}${isDone ? ' done' : ''}`}>
-                {isDone ? '✓' : step.num}
-              </div>
-              <span className="step-label">{step.label}</span>
-            </div>
-            {i < STEPS.length - 1 && (
-              <div className={`step-connector${isDone ? ' done' : ''}`} />
-            )}
-          </React.Fragment>
-        );
-      })}
-    </div>
+    <nav className="step-bar-wrap" aria-label="Steps">
+      <ol className="step-bar">
+        {STEPS.map((label, i) => {
+          const num = i + 1;
+          const done = num < currentStep;
+          const active = num === currentStep;
+          return (
+            <li key={label}>
+              <button
+                type="button"
+                className={`step-btn${active ? ' active' : ''}${done ? ' done can-go' : ''}`}
+                onClick={() => done && onSelect(num)}
+                aria-current={active ? 'step' : undefined}
+                aria-disabled={!done && !active}
+                tabIndex={done ? 0 : -1}
+                title={done ? `Back to ${label}` : undefined}
+              >
+                <span className="step-num">{done ? '✓' : num}</span>
+                <span className="step-label">
+                  {label}
+                  {done && <span className="sr-only"> (completed, go back)</span>}
+                </span>
+              </button>
+              {num < STEPS.length && <span className={`step-line${done ? ' done' : ''}`} aria-hidden="true" />}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
   );
 }
